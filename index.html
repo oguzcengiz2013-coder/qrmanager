@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QR Code Reader & Generator</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(140deg,#111827,#172554);color:#e5e7eb;display:grid;place-items:center;padding:20px}.app{width:min(100%,650px);background:#111827;border:1px solid #334155;border-radius:22px;padding:26px;box-shadow:0 20px 70px #0006}h1{margin:0 0 5px;font-size:27px}p{color:#94a3b8;margin:8px 0 20px}.drop{display:block;border:2px dashed #64748b;border-radius:16px;padding:26px;text-align:center;cursor:pointer;background:#1e293b;transition:.2s}.drop:hover,.drop.drag{border-color:#60a5fa;background:#1e3a5f}.drop strong{display:block;font-size:18px;margin-bottom:7px}.drop small{color:#94a3b8}input[type=file]{display:none}button,.btn{background:#2563eb;color:white;border:0;padding:10px 15px;border-radius:10px;cursor:pointer;font:inherit;font-weight:600}button:hover,.btn:hover{background:#1d4ed8}.preview{display:flex;justify-content:center;margin:18px 0}.preview img{max-width:min(100%,320px);max-height:280px;object-fit:contain;background:white;border-radius:10px;padding:8px}.status{padding:10px 12px;background:#1e293b;border-radius:10px;margin:15px 0;color:#cbd5e1;overflow-wrap:anywhere}.result{display:none;margin-top:16px}.item{margin:14px 0}.item label{display:block;font-size:13px;color:#94a3b8;margin-bottom:6px}.value{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b1220;padding:14px;border-radius:10px;border:1px solid #334155;user-select:text}.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:9px}a{color:#93c5fd;overflow-wrap:anywhere}.tip{font-size:12px;color:#94a3b8;margin-top:18px}.hidden{display:none!important}.divider{border:0;border-top:1px solid #334155;margin:28px 0}.field{display:block;width:100%;min-height:110px;border:1px solid #475569;border-radius:12px;background:#0b1220;color:#f1f5f9;font:inherit;padding:13px;resize:vertical}.field:focus{outline:2px solid #60a5fa;outline-offset:1px}.qr-output{background:white;border-radius:12px;padding:15px;display:flex;justify-content:center;width:fit-content;max-width:100%;margin:16px auto}.qr-output svg{width:min(100%,280px);height:auto;display:block}.muted{color:#94a3b8;font-size:13px}.generate-title{font-size:23px;margin:0 0 10px}
+</style>
+</head>
+<body>
+<main class="app">
+<h1>▦ QR Code Reader & Generator</h1><p>Choose a PNG, JPG, WEBP, GIF, BMP, or SVG file containing a QR code. Everything is decoded in your browser.</p>
+<label class="drop" id="drop" for="file"><strong>📁 Drag a QR code image here or choose a file</strong><small>PNG · JPG · JPEG · SVG · WEBP · GIF · BMP</small></label>
+<input type="file" id="file" accept="image/*,.svg">
+<div class="preview" id="preview"></div>
+<div class="status" id="status" role="status">Ready. Choose a QR code image.</div>
+<section id="result" class="result">
+<div class="item"><label>QR code content</label><div class="value" id="raw"></div><div class="row"><button id="copyRaw">Copy content</button></div></div>
+<div id="wifi" class="hidden"><div class="item"><label>Wi-Fi network name (SSID)</label><div class="value" id="ssid"></div></div><div class="item"><label>Wi-Fi password</label><div class="value" id="password"></div><div class="row"><button id="copyPass">Copy password</button></div></div></div>
+<div id="linkBox" class="item hidden"><label>Link</label><div class="value" id="linkText"></div><div class="row"><a id="link" target="_blank" rel="noopener noreferrer">Open link</a></div></div>
+</section>
+<hr class="divider">
+<section aria-labelledby="generateTitle">
+<h2 class="generate-title" id="generateTitle">Create a QR Code (SVG)</h2>
+<p>Enter text, a URL, or a Wi-Fi QR string to generate a scalable QR code.</p>
+<label for="qrInput" class="muted">QR code content</label>
+<textarea id="qrInput" class="field" placeholder="https://example.com" spellcheck="false"></textarea>
+<div class="row"><button id="generateQR" type="button">Generate QR Code</button><button id="downloadSVG" type="button" class="hidden">Download SVG</button></div>
+<div id="generateStatus" class="status" role="status">Ready to generate.</div>
+<div id="generatedPreview" class="qr-output hidden" aria-label="Generated QR code preview"></div>
+</section>
+<div class="tip">🔒 Passwords and QR code contents are not sent to any server. SVG files are processed as images; scripts are not executed. Internet access is only required to load the QR libraries.</div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<script>
+const $=id=>document.getElementById(id),file=$('file'),drop=$('drop'),status=$('status');
+let rawText='',passwordText='';
+function setStatus(t){status.textContent=t;}
+function parseWifi(s){if(!s.startsWith('WIFI:'))return null;let body=s.slice(5),fields={},key='',val='',escaped=false,readingKey=true;function commit(){if(key)fields[key.toUpperCase()]=val;key='';val='';readingKey=true;}
+for(let i=0;i<body.length;i++){const c=body[i];if(escaped){(readingKey?()=>key+=c:()=>val+=c)();escaped=false;continue}if(c==='\\'){escaped=true;continue}if(c===';' ){commit();continue}if(c===':'&&readingKey){readingKey=false;continue}if(readingKey)key+=c;else val+=c;}commit();return fields;}
+function showResult(s){rawText=s;$('raw').textContent=s;$('result').style.display='block';$('wifi').classList.add('hidden');$('linkBox').classList.add('hidden');let wifi=parseWifi(s);if(wifi){$('wifi').classList.remove('hidden');$('ssid').textContent=wifi.S||'(Not specified)';passwordText=wifi.P||'';$('password').textContent=passwordText||'(No password / open network)';setStatus('✅ Wi-Fi QR code decoded.');return;}
+let target;try{const u=new URL(s.trim());if(['http:','https:'].includes(u.protocol))target=u.href;}catch{}if(target){$('linkBox').classList.remove('hidden');$('linkText').textContent=target;$('link').href=target;setStatus('✅ Link QR code decoded.');}else{setStatus('✅ QR code decoded.');}}
+function decodeImage(img){const canvas=document.createElement('canvas');let w=img.naturalWidth,h=img.naturalHeight;if(!w||!h)throw Error('Could not read image dimensions.');const scale=Math.min(1,2400/Math.max(w,h));canvas.width=Math.round(w*scale);canvas.height=Math.round(h*scale);const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);const found=jsQR(pixels.data,canvas.width,canvas.height,{inversionAttempts:'attemptBoth'});return found?.data||null;}
+async function handle(f){$('preview').replaceChildren();$('result').style.display='none';if(!f)return;if(!/\.(png|jpe?g|svg|webp|gif|bmp)$/i.test(f.name)&&!f.type.startsWith('image/')){setStatus('❌ Unsupported file format.');return}if(typeof jsQR!=='function'){setStatus('❌ Could not load the QR library. Check your internet connection and refresh the page.');return;}setStatus('Scanning QR code…');let url=URL.createObjectURL(f);let img=new Image();img.onload=()=>{try{const found=decodeImage(img);$('preview').append(img);if(found!==null)showResult(found);else setStatus('❌ Could not decode the QR code. Try a clearer or larger image.');}catch(e){setStatus('❌ Could not read image: '+e.message);}finally{URL.revokeObjectURL(url);}};img.onerror=()=>{setStatus('❌ The file could not be opened as an image.');URL.revokeObjectURL(url);};img.src=url;}
+file.addEventListener('change',()=>handle(file.files[0]));drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('drag')});drop.addEventListener('dragleave',()=>drop.classList.remove('drag'));drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('drag');handle(e.dataTransfer.files[0]);});
+$('copyRaw').onclick=async()=>{try{await navigator.clipboard.writeText(rawText);setStatus('✅ Content copied.')}catch{setStatus('Could not copy. Select the text and copy it manually.')}};$('copyPass').onclick=async()=>{try{await navigator.clipboard.writeText(passwordText);setStatus('✅ Password copied.')}catch{setStatus('Could not copy. Select the password and copy it manually.')}};
+
+let generatedSVG='';
+function createQR(){
+  const content=$('qrInput').value;
+  $('generatedPreview').classList.add('hidden');
+  $('downloadSVG').classList.add('hidden');
+  generatedSVG='';
+  if(!content.trim()){$('generateStatus').textContent='❌ Enter text or a link first.';return;}
+  if(typeof qrcode!=='function'){$('generateStatus').textContent='❌ QR generator library could not load. Check your connection and refresh.';return;}
+  try{
+    const qr=qrcode(0,'M');
+    qr.addData(content,'Byte');
+    qr.make();
+    const count=qr.getModuleCount(), quiet=4, total=count+quiet*2;
+    let path='';
+    for(let y=0;y<count;y++)for(let x=0;x<count;x++)if(qr.isDark(y,x))path+=`M${x+quiet} ${y+quiet}h1v1h-1z`;
+    generatedSVG=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${total}" width="${total*8}" height="${total*8}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path fill="#000" d="${path}"/></svg>`;
+    $('generatedPreview').innerHTML=generatedSVG;
+    $('generatedPreview').classList.remove('hidden');
+    $('downloadSVG').classList.remove('hidden');
+    $('generateStatus').textContent='✅ QR code generated. Download it as an SVG.';
+  }catch(e){$('generateStatus').textContent='❌ Could not generate QR code. The content may be too long. '+e.message;}
+}
+$('generateQR').addEventListener('click',createQR);
+$('downloadSVG').addEventListener('click',()=>{
+  if(!generatedSVG)return;
+  const url=URL.createObjectURL(new Blob([generatedSVG],{type:'image/svg+xml;charset=utf-8'}));
+  const a=document.createElement('a');a.href=url;a.download='qr-code.svg';document.body.append(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  $('generateStatus').textContent='✅ SVG download started.';
+});
+</script>
+</body>
+</html>
